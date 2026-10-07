@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>역학적 에너지 보존 & 완전탄성 충돌 시뮬레이터</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Inter & Noto Sans KR -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans KR', 'Inter', sans-serif;
+            background-color: #090d16;
+            color: #f8fafc;
+        }
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e293b;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 3px;
+        }
+        input[type=range] {
+            accent-color: #3b82f6;
+        }
+        canvas {
+            touch-action: none;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col bg-slate-950 text-slate-100 antialiased selection:bg-blue-500 selection:text-white">
+
+    <header class="border-b border-slate-800 bg-slate-900/90 backdrop-blur sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between flex-wrap gap-3">
+            <div class="flex items-center space-x-3">
+                <div class="p-2.5 bg-emerald-600/20 text-emerald-400 rounded-xl border border-emerald-500/30">
+                    <i class="fa-solid fa-infinity text-2xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold bg-gradient-to-r from-emerald-400 via-cyan-300 to-blue-400 bg-clip-text text-transparent">
+                        무손실 자유낙하 & 완전탄성 충돌 실험실
+                    </h1>
+                    <p class="text-xs text-slate-400">에너지 손실 없음 ($E = K + U = \text{constant}$) | 오직 중력만 작용 ($F = mg$)</p>
+                </div>
+            </div>
+
+            <!-- Header Quick Controls -->
+            <div class="flex items-center gap-2">
+                <button id="btn-theory-modal" class="px-3 py-1.5 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg border border-slate-700 transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-book-open text-emerald-400"></i>
+                    <span>물리 원리 & 공식</span>
+                </button>
+                <button id="btn-reset-all" class="px-3 py-1.5 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-rose-400 hover:text-rose-300 rounded-lg border border-slate-700 transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-rotate-left"></i>
+                    <span>다시 낙하</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 grid grid-cols-1 lg:grid-cols-12 gap-5">
+
+        <!-- Left Sidebar: Controls & Settings (4 cols) -->
+        <aside class="lg:col-span-4 flex flex-col gap-4">
+            
+            <!-- Environment Gravity Selector -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg">
+                <h2 class="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
+                    <i class="fa-solid fa-globe text-emerald-400"></i> 중력 환경 선택 (중력가속도 $g$)
+                </h2>
+                <div class="grid grid-cols-2 gap-2 text-xs">
+                    <button id="btn-env-earth" onclick="setEnvironment('earth')" class="p-3 bg-blue-950/60 border-2 border-blue-500 rounded-xl text-slate-200 transition text-left flex flex-col gap-1 hover:border-blue-400">
+                        <div class="flex items-center justify-between">
+                            <span class="font-bold text-blue-400 flex items-center gap-1">
+                                <i class="fa-solid fa-earth-americas"></i> 지구 (Earth)
+                            </span>
+                            <span class="text-[10px] bg-blue-500/20 px-1.5 py-0.5 rounded text-blue-300">1.0g</span>
+                        </div>
+                        <span class="text-[11px] text-slate-400 font-mono">g = 9.80 m/s²</span>
+                    </button>
+                    <button id="btn-env-moon" onclick="setEnvironment('moon')" class="p-3 bg-slate-800/60 border-2 border-slate-700 rounded-xl text-slate-200 transition text-left flex flex-col gap-1 hover:border-amber-400">
+                        <div class="flex items-center justify-between">
+                            <span class="font-bold text-amber-300 flex items-center gap-1">
+                                <i class="fa-solid fa-moon"></i> 달 (Moon)
+                            </span>
+                            <span class="text-[10px] bg-amber-500/20 px-1.5 py-0.5 rounded text-amber-300">0.166g</span>
+                        </div>
+                        <span class="text-[11px] text-slate-400 font-mono">g = 1.62 m/s²</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Object & Drop Parameters -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg space-y-4 flex-1">
+                <h2 class="text-sm font-semibold text-slate-300 flex items-center gap-2 border-b border-slate-800 pb-2">
+                    <i class="fa-solid fa-sliders text-indigo-400"></i> 낙하 조건 및 바닥 접촉시간
+                </h2>
+
+                <!-- Object Mass Slider -->
+                <div class="bg-slate-950/60 p-3 rounded-xl border border-indigo-500/20 space-y-2">
+                    <div class="flex justify-between items-center text-xs">
+                        <span class="font-bold text-indigo-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-weight-hanging text-indigo-400"></i> 물체 질량 ($m$)
+                        </span>
+                        <span class="text-indigo-300 font-mono font-bold"><span id="val-m">2.0</span> kg</span>
+                    </div>
+                    <input type="range" id="input-m" min="0.5" max="10" step="0.5" value="2.0" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer">
+                </div>
+
+                <!-- Drop Height Slider -->
+                <div class="bg-slate-950/60 p-3 rounded-xl border border-cyan-500/20 space-y-2">
+                    <div class="flex justify-between items-center text-xs">
+                        <span class="font-bold text-cyan-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-ruler-vertical text-cyan-400"></i> 초기 낙하 높이 ($h_0$)
+                        </span>
+                        <span class="text-cyan-300 font-mono font-bold"><span id="val-h">6.0</span> m</span>
+                    </div>
+                    <input type="range" id="input-h" min="2.0" max="9.0" step="0.5" value="6.0" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer">
+                </div>
+
+                <!-- Contact Duration / Floor Hardness -->
+                <div class="bg-slate-950/60 p-3 rounded-xl border border-amber-500/20 space-y-2 text-xs">
+                    <div class="flex justify-between items-center">
+                        <span class="font-bold text-amber-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-stopwatch text-amber-400"></i> 충돌 접촉 시간 ($\Delta t$)
+                        </span>
+                        <span id="label-contact-time" class="text-amber-300 font-mono font-bold">0.08 s</span>
+                    </div>
+                    <input type="range" id="input-dt" min="0.02" max="0.25" step="0.01" value="0.08" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer">
+                    <p class="text-[10px] text-slate-400">※ 접촉시간이 길어지면 peak 충격력($F_{max}$)은 감소하지만 총 충격량($I$)과 에너지 보존은 동일합니다.</p>
+                </div>
+
+                <!-- Display Toggles -->
+                <div class="grid grid-cols-2 gap-2 text-xs pt-1">
+                    <label class="flex items-center gap-2 text-slate-300 cursor-pointer bg-slate-800/50 p-2 rounded-lg border border-slate-800 hover:border-slate-700">
+                        <input type="checkbox" id="chk-vectors" checked class="rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-0">
+                        <span>벡터 화살표 ($v, p, F$)</span>
+                    </label>
+                    <label class="flex items-center gap-2 text-slate-300 cursor-pointer bg-slate-800/50 p-2 rounded-lg border border-slate-800 hover:border-slate-700">
+                        <input type="checkbox" id="chk-values" checked class="rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-0">
+                        <span>실시간 수치 태그</span>
+                    </label>
+                </div>
+
+                <!-- Conservation Rule Info Box -->
+                <div class="bg-emerald-950/40 border border-emerald-500/30 p-3 rounded-xl text-[11px] text-emerald-200 leading-relaxed">
+                    <span class="font-bold text-emerald-300 block mb-1">
+                        <i class="fa-solid fa-shield-halved"></i> 에너지 보존 & 나중 속도 유도:
+                    </span>
+                    $$\text{충돌 직전 속도 } v_{in} = -\sqrt{2gh_0}$$
+                    $$\text{완전탄성 충격량 } I = \Delta p = 2m \cdot |v_{in}|$$
+                    $$\mathbf{v_{out} = v_{in} + \frac{I}{m} = -v_{in} = +\sqrt{2gh_0}}$$
+                    <p class="mt-1 text-emerald-300/80">에너지 손실이 없어 바닥 충돌 후 원래 높이 $h_0$까지 정확히 재상승합니다.</p>
+                </div>
+
+            </div>
+        </aside>
+
+        <!-- Center & Right Column: Simulation Viewport & Graphs (8 cols) -->
+        <section class="lg:col-span-8 flex flex-col gap-4">
+
+            <!-- Canvas Card -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg flex flex-col gap-3 relative">
+                <!-- Canvas Top Bar Controls -->
+                <div class="flex items-center justify-between flex-wrap gap-2">
+                    <div class="flex items-center gap-2">
+                        <span class="relative flex h-2.5 w-2.5">
+                            <span id="status-ping" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span id="status-dot" class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                        </span>
+                        <span id="sim-status-text" class="text-xs font-semibold text-emerald-400">낙하 준비</span>
+                        <span class="text-xs text-slate-500 ml-2">시간: <span id="time-display" class="font-mono text-slate-300">0.00</span>s</span>
+                    </div>
+
+                    <!-- Playback Controls -->
+                    <div class="flex items-center gap-2">
+                        <button id="btn-play-pause" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold shadow-md shadow-emerald-600/30 transition flex items-center gap-1.5">
+                            <i class="fa-solid fa-play" id="icon-play-pause"></i>
+                            <span id="text-play-pause">낙하 시작</span>
+                        </button>
+                        <button id="btn-step" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs border border-slate-700 transition" title="1프레임 이동">
+                            <i class="fa-solid fa-forward-step"></i>
+                        </button>
+                        <div class="flex items-center gap-1 bg-slate-800 px-2 py-1 rounded-lg border border-slate-700 text-xs">
+                            <i class="fa-solid fa-gauge-high text-slate-400 text-[10px]"></i>
+                            <span id="val-speed" class="font-mono text-slate-300 w-8 text-right">1.0x</span>
+                            <input type="range" id="input-speed" min="0.1" max="2.0" step="0.1" value="1.0" class="w-16 h-1 bg-slate-700 rounded appearance-none cursor-pointer ml-1">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Simulation Canvas -->
+                <div class="relative w-full bg-slate-950 rounded-xl overflow-hidden border border-slate-800 aspect-[16/9] flex items-center justify-center">
+                    <canvas id="sim-canvas" class="w-full h-full block"></canvas>
+
+                    <!-- Vector Legend Overlay -->
+                    <div class="absolute bottom-3 left-3 bg-slate-900/85 backdrop-blur border border-slate-800 rounded-lg px-3 py-1.5 text-[11px] flex items-center gap-3 text-slate-300">
+                        <div class="flex items-center gap-1">
+                            <span class="w-3 h-0.5 bg-emerald-400 inline-block"></span>
+                            <span>속도 ($v$)</span>
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <span class="w-3 h-0.5 bg-purple-400 inline-block"></span>
+                            <span>운동량 ($p$)</span>
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <span class="w-3 h-0.5 bg-amber-400 inline-block"></span>
+                            <span>바닥 충격력 ($F$)</span>
+                        </div>
+                    </div>
+
+                    <!-- Environment Badge overlay -->
+                    <div id="badge-env" class="absolute top-3 right-3 bg-blue-900/80 backdrop-blur border border-blue-500/40 rounded-lg px-3 py-1 text-xs font-bold text-blue-300 flex items-center gap-1.5">
+                        <i class="fa-solid fa-earth-americas"></i>
+                        <span>지구 (g = 9.80 m/s²)</span>
+                    </div>
+                </div>
+
+                <!-- Real-time Mechanical Energy Visualizer Bar -->
+                <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1.5 text-xs">
+                    <div class="flex justify-between items-center text-[11px]">
+                        <span class="font-bold text-emerald-400 flex items-center gap-1">
+                            <i class="fa-solid fa-bolt"></i> 역학적 에너지 보존 모니터링 ($E_{total} = K + U$)
+                        </span>
+                        <span class="font-mono text-emerald-300 font-bold">
+                            총 에너지: <span id="val-etotal">117.6</span> J
+                        </span>
+                    </div>
+
+                    <!-- Combined Bar Chart -->
+                    <div class="h-4 w-full bg-slate-800 rounded-full overflow-hidden flex">
+                        <div id="bar-ke" class="bg-cyan-500 h-full transition-all duration-75 flex items-center justify-center text-[9px] font-bold text-slate-950" style="width: 0%">
+                            K
+                        </div>
+                        <div id="bar-pe" class="bg-emerald-500 h-full transition-all duration-75 flex items-center justify-center text-[9px] font-bold text-slate-950" style="width: 100%">
+                            U
+                        </div>
+                    </div>
+
+                    <div class="flex justify-between text-[11px] font-mono">
+                        <span class="text-cyan-400">운동 에너지 (K = ½mv²): <span id="val-ke">0.0</span> J</span>
+                        <span class="text-emerald-400">위치 에너지 (U = mgh): <span id="val-pe">117.6</span> J</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Real-time Analytics & Graphs Section -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                
+                <!-- Graph 1: Force vs Time (F-t Graph) -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 shadow-lg flex flex-col justify-between">
+                    <div class="flex justify-between items-center mb-2">
+                        <h3 class="text-xs font-semibold text-amber-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-chart-area text-amber-400"></i> 충격력-시간 그래프 ($F - t$)
+                        </h3>
+                        <span class="text-[10px] text-amber-300 font-mono font-bold bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
+                            면적 = 충격량 ($I = 2mv_{in}$)
+                        </span>
+                    </div>
+                    <div class="w-full h-36 bg-slate-950 rounded-lg border border-slate-800 relative">
+                        <canvas id="graph-ft-canvas" class="w-full h-full block"></canvas>
+                    </div>
+                </div>
+
+                <!-- Graph 2: Momentum vs Time (p-t Graph) -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 shadow-lg flex flex-col justify-between">
+                    <div class="flex justify-between items-center mb-2">
+                        <h3 class="text-xs font-semibold text-purple-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-chart-line text-purple-400"></i> 운동량-시간 그래프 ($p - t$)
+                        </h3>
+                        <span class="text-[10px] text-purple-300 font-mono font-medium">
+                            수직 운동량 ($p = m \cdot v$)
+                        </span>
+                    </div>
+                    <div class="w-full h-36 bg-slate-950 rounded-lg border border-slate-800 relative">
+                        <canvas id="graph-pt-canvas" class="w-full h-full block"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Live Physics Calculation Table -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg">
+                <h3 class="text-xs font-semibold text-slate-300 mb-3 flex items-center gap-2">
+                    <i class="fa-solid fa-table text-emerald-400"></i> 실시간 충돌 & 운동량-충격량 수치 계산
+                </h3>
+                
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center text-xs">
+                    <!-- Impact Velocity & Momentum -->
+                    <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                        <span class="text-slate-400 text-[10px] block">충돌 직전 속도 ($v_{in}$)</span>
+                        <span id="data-vin" class="text-sm font-bold font-mono text-cyan-300">0.00 m/s</span>
+                    </div>
+                    <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                        <span class="text-slate-400 text-[10px] block">충돌 직전 운동량 ($p_{in}$)</span>
+                        <span id="data-pin" class="text-sm font-bold font-mono text-purple-300">0.00 kg·m/s</span>
+                    </div>
+                    
+                    <!-- Impulse & Peak Force -->
+                    <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                        <span class="text-slate-400 text-[10px] block">전달된 충격량 ($I = \Delta p$)</span>
+                        <span id="data-impulse" class="text-sm font-bold font-mono text-amber-300">0.00 N·s</span>
+                    </div>
+                    <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                        <span class="text-slate-400 text-[10px] block">최대 바닥 충격력 ($F_{max}$)</span>
+                        <span id="data-fmax" class="text-sm font-bold font-mono text-rose-400">0.00 N</span>
+                    </div>
+                </div>
+
+                <!-- Bounce Velocity Calculation Bar -->
+                <div class="mt-3 bg-slate-950 p-3 rounded-xl border border-emerald-500/30 flex flex-col sm:flex-row items-center justify-between text-xs gap-2">
+                    <div class="flex items-center gap-2 text-emerald-300">
+                        <i class="fa-solid fa-calculator text-emerald-400"></i>
+                        <span>공식에 의한 충돌 후 나중 속도 ($v_{out}$):</span>
+                    </div>
+                    <div class="font-mono text-sm font-bold text-emerald-400 bg-slate-900 px-3 py-1 rounded-lg border border-slate-800">
+                        v<sub>out</sub> = <span id="calc-formula">v<sub>in</sub> + I/m</span> = <span id="data-vout" class="text-emerald-300">0.00 m/s</span>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+    </main>
+
+    <!-- Theory Modal -->
+    <div id="theory-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto p-6 shadow-2xl relative">
+            <button id="btn-close-modal" class="absolute top-4 right-4 text-slate-400 hover:text-white text-lg">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+            <h2 class="text-lg font-bold text-emerald-400 mb-4 flex items-center gap-2">
+                <i class="fa-solid fa-graduation-cap"></i> 에너지 보존 & 완전 탄성 충돌 물리 원리
+            </h2>
+            
+            <div class="space-y-4 text-xs text-slate-300 leading-relaxed">
+                <!-- Concept 1 -->
+                <div class="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
+                    <h3 class="font-bold text-emerald-300 text-sm mb-1">1. 역학적 에너지 보존 법칙</h3>
+                    <p>공기 저항이나 마찰 등 비보존력이 작용하지 않고 오직 **중력만 작용**하는 자유낙하 운동에서는 운동 에너지($K$)와 위치 에너지($U$)의 합이 항상 일정하게 유지됩니다:</p>
+                    <div class="font-mono text-emerald-400 my-1.5 bg-slate-900 p-2 rounded text-center">
+                        $$E_{\text{total}} = mgh_0 = mgh + \frac{1}{2}mv^2 = \text{일정(Constant)}$$
+                    </div>
+                </div>
+
+                <!-- Concept 2 -->
+                <div class="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
+                    <h3 class="font-bold text-amber-300 text-sm mb-1">2. 완전 탄성 바닥 충돌과 충격량</h3>
+                    <p>에너지 손실이 없는 완전 탄성 충돌($e = 1.0$)에서는 충돌 직전 하향 속도 $v_{\text{in}}$와 충돌 직후 상향 속도 $v_{\text{out}}$의 크기가 같습니다 ($v_{\text{out}} = -v_{\text{in}}$):</p>
+                    <div class="font-mono text-amber-300 my-1.5 bg-slate-900 p-2 rounded text-center">
+                        $$I = \Delta p = p_{\text{out}} - p_{\text{in}} = m \cdot v_{\text{out}} - m \cdot v_{\text{in}} = 2m \cdot |v_{\text{in}}|$$
+                        $$v_{\text{out}} = v_{\text{in}} + \frac{I}{m} = -|v_{\text{in}}| + \frac{2m|v_{\text{in}}|}{m} = +|v_{\text{in}}|$$
+                    </div>
+                </div>
+
+                <!-- Concept 3 -->
+                <div class="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
+                    <h3 class="font-bold text-indigo-300 text-sm mb-1">3. 지구 vs 달 환경의 중력 가속도</h3>
+                    <p>달의 중력가속도($1.62\text{ m/s}^2$)는 지구($9.80\text{ m/s}^2$)보다 작아 낙하 시간이 길어지고, 바닥에 도달했을 때의 속도와 충격량도 감소합니다.</p>
+                </div>
+            </div>
+            
+            <div class="mt-5 text-right">
+                <button id="btn-close-modal-bottom" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold">
+                    확인 및 닫기
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Physics & App State Engine
+        const state = {
+            env: 'earth', // 'earth' or 'moon'
+            g: 9.80, // m/s^2
+            
+            m: 2.0, // Mass (kg)
+            h0: 6.0, // Initial Height (m)
+            contactTime: 0.08, // seconds (Collision duration dt)
+
+            // Dynamic Motion State
+            y: 6.0, // Height above ground (m)
+            v: 0.0, // Velocity (m/s, +up, -down)
+            
+            time: 0,
+            running: false,
+            speedScale: 1.0,
+
+            // Collision States
+            isColliding: false,
+            collisionStartT: 0,
+            collisionOccurred: false,
+
+            // Physics Analytics
+            vIn: 0,
+            pIn: 0,
+            impulseVal: 0,
+            maxForceVal: 0,
+            vOut: 0,
+            pOut: 0,
+
+            // Energy state
+            ke: 0,
+            pe: 0,
+            eTotal: 0,
+
+            // Chart histories
+            ftHistory: [],
+            ptHistory: []
+        };
+
+        // DOM Elements
+        const canvas = document.getElementById('sim-canvas');
+        const ctx = canvas.getContext('2d');
+
+        const ftCanvas = document.getElementById('graph-ft-canvas');
+        const ftCtx = ftCanvas.getContext('2d');
+
+        const ptCanvas = document.getElementById('graph-pt-canvas');
+        const ptCtx = ptCanvas.getContext('2d');
+
+        // Inputs
+        const inputM = document.getElementById('input-m');
+        const inputH = document.getElementById('input-h');
+        const inputDt = document.getElementById('input-dt');
+        const inputSpeed = document.getElementById('input-speed');
+
+        const chkVectors = document.getElementById('chk-vectors');
+        const chkValues = document.getElementById('chk-values');
+
+        // UI Displays
+        const valM = document.getElementById('val-m');
+        const valH = document.getElementById('val-h');
+        const labelContactTime = document.getElementById('label-contact-time');
+        const valSpeed = document.getElementById('val-speed');
+        const timeDisplay = document.getElementById('time-display');
+
+        const btnPlayPause = document.getElementById('btn-play-pause');
+        const iconPlayPause = document.getElementById('icon-play-pause');
+        const textPlayPause = document.getElementById('text-play-pause');
+        const btnStep = document.getElementById('btn-step');
+        const btnReset = document.getElementById('btn-reset-all');
+
+        const statusPing = document.getElementById('status-ping');
+        const statusDot = document.getElementById('status-dot');
+        const simStatusText = document.getElementById('sim-status-text');
+        const badgeEnv = document.getElementById('badge-env');
+
+        // Energy Bar Elements
+        const valEtotal = document.getElementById('val-etotal');
+        const valKe = document.getElementById('val-ke');
+        const valPe = document.getElementById('val-pe');
+        const barKe = document.getElementById('bar-ke');
+        const barPe = document.getElementById('bar-pe');
+
+        // Data Display Elements
+        const dataVin = document.getElementById('data-vin');
+        const dataPin = document.getElementById('data-pin');
+        const dataImpulse = document.getElementById('data-impulse');
+        const dataFmax = document.getElementById('data-fmax');
+        const dataVout = document.getElementById('data-vout');
+        const calcFormula = document.getElementById('calc-formula');
+
+        // Modals
+        const modal = document.getElementById('theory-modal');
+        const btnTheory = document.getElementById('btn-theory-modal');
+        const btnCloseModal = document.getElementById('btn-close-modal');
+        const btnCloseModalBottom = document.getElementById('btn-close-modal-bottom');
+
+        function resizeCanvases() {
+            const rect = canvas.parentElement.getBoundingClientRect();
+            canvas.width = rect.width * window.devicePixelRatio;
+            canvas.height = rect.height * window.devicePixelRatio;
+
+            const ftRect = ftCanvas.parentElement.getBoundingClientRect();
+            ftCanvas.width = ftRect.width * window.devicePixelRatio;
+            ftCanvas.height = ftRect.height * window.devicePixelRatio;
+
+            const ptRect = ptCanvas.parentElement.getBoundingClientRect();
+            ptCanvas.width = ptRect.width * window.devicePixelRatio;
+            ptCanvas.height = ptRect.height * window.devicePixelRatio;
+        }
+
+        window.addEventListener('resize', resizeCanvases);
+
+        function setEnvironment(envType) {
+            state.env = envType;
+            const btnEarth = document.getElementById('btn-env-earth');
+            const btnMoon = document.getElementById('btn-env-moon');
+
+            if (envType === 'earth') {
+                state.g = 9.80;
+                btnEarth.className = "p-3 bg-blue-950/60 border-2 border-blue-500 rounded-xl text-slate-200 transition text-left flex flex-col gap-1 hover:border-blue-400";
+                btnMoon.className = "p-3 bg-slate-800/60 border-2 border-slate-700 rounded-xl text-slate-200 transition text-left flex flex-col gap-1 hover:border-amber-400";
+                badgeEnv.innerHTML = `<i class="fa-solid fa-earth-americas"></i> <span>지구 (g = 9.80 m/s²)</span>`;
+                badgeEnv.className = "absolute top-3 right-3 bg-blue-900/80 backdrop-blur border border-blue-500/40 rounded-lg px-3 py-1 text-xs font-bold text-blue-300 flex items-center gap-1.5";
+            } else {
+                state.g = 1.62;
+                btnMoon.className = "p-3 bg-amber-950/60 border-2 border-amber-500 rounded-xl text-slate-200 transition text-left flex flex-col gap-1 hover:border-amber-400";
+                btnEarth.className = "p-3 bg-slate-800/60 border-2 border-slate-700 rounded-xl text-slate-200 transition text-left flex flex-col gap-1 hover:border-blue-400";
+                badgeEnv.innerHTML = `<i class="fa-solid fa-moon"></i> <span>달 (g = 1.62 m/s²)</span>`;
+                badgeEnv.className = "absolute top-3 right-3 bg-amber-900/80 backdrop-blur border border-amber-500/40 rounded-lg px-3 py-1 text-xs font-bold text-amber-300 flex items-center gap-1.5";
+            }
+
+            resetSimulation();
+        }
+
+        function resetSimulation() {
+            state.time = 0;
+            state.m = parseFloat(inputM.value);
+            state.h0 = parseFloat(inputH.value);
+            state.contactTime = parseFloat(inputDt.value);
+
+            state.y = state.h0;
+            state.v = 0.0;
+
+            state.isColliding = false;
+            state.collisionOccurred = false;
+
+            // Theoretical total energy (E = m * g * h0)
+            state.eTotal = state.m * state.g * state.h0;
+            state.pe = state.eTotal;
+            state.ke = 0;
+
+            state.vIn = -Math.sqrt(2 * state.g * state.h0);
+            state.pIn = state.m * state.vIn;
+
+            // Perfectly elastic rebound: v_out = -v_in
+            state.vOut = -state.vIn;
+            state.pOut = state.m * state.vOut;
+
+            // Impulse I = delta p = p_out - p_in = 2 * m * |v_in|
+            state.impulseVal = state.pOut - state.pIn; // Positive upward impulse
+
+            // Peak Force modeling: Half-Sine pulse integral = I
+            state.maxForceVal = (state.impulseVal * Math.PI) / (2 * state.contactTime);
+
+            state.ftHistory = [];
+            state.ptHistory = [];
+
+            state.running = false;
+            iconPlayPause.className = 'fa-solid fa-play';
+            textPlayPause.textContent = '낙하 시작';
+            statusPing.classList.add('hidden');
+            statusDot.className = 'relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500';
+            simStatusText.textContent = '준비 완료';
+            simStatusText.className = 'text-xs font-semibold text-amber-400';
+
+            updateDataUI();
+        }
+
+        function updatePhysics(dt) {
+            if (!state.running) return;
+
+            const effectiveDt = dt * state.speedScale;
+            state.time += effectiveDt;
+
+            let currentImpactForce = 0;
+
+            // Ground Impact trigger (y <= 0 while moving down)
+            if (!state.isColliding && state.y <= 0 && state.v <= 0) {
+                state.isColliding = true;
+                state.collisionOccurred = true;
+                state.collisionStartT = state.time;
+                state.y = 0;
+
+                // Impact calculations with zero energy loss
+                state.vIn = state.v; // Actual speed at floor
+                state.pIn = state.m * state.vIn;
+
+                state.vOut = -state.vIn; // Ideal elastic bounce
+                state.pOut = state.m * state.vOut;
+
+                state.impulseVal = state.pOut - state.pIn; // Delta p
+                state.maxForceVal = (state.impulseVal * Math.PI) / (2 * state.contactTime);
+
+                state.v = state.vOut; // Instantly set rebound direction
+            }
+
+            if (state.isColliding) {
+                const elapsed = state.time - state.collisionStartT;
+                if (elapsed <= state.contactTime) {
+                    currentImpactForce = state.maxForceVal * Math.sin((Math.PI * elapsed) / state.contactTime);
+                } else {
+                    state.isColliding = false;
+                }
+            }
+
+            if (!state.isColliding) {
+                // Free fall under ONLY gravity force (a = -g)
+                state.v -= state.g * effectiveDt;
+                state.y += state.v * effectiveDt;
+
+                // Upper limit boundary safety
+                if (state.y > state.h0) {
+                    state.y = state.h0;
+                    state.v = 0; // Natural apex in ideal motion
+                }
+
+                if (state.y < 0) {
+                    state.y = 0;
+                }
+            }
+
+            // Real-time Energy Monitoring
+            state.pe = Math.max(0, state.m * state.g * state.y);
+            state.ke = Math.max(0, 0.5 * state.m * state.v * state.v);
+            // Total energy is conserved: E = K + U = m * g * h0
+
+            // Log history
+            const currentP = state.m * state.v;
+            state.ftHistory.push({ t: state.time, f: currentImpactForce });
+            state.ptHistory.push({ t: state.time, p: currentP });
+
+            if (state.ftHistory.length > 500) state.ftHistory.shift();
+            if (state.ptHistory.length > 500) state.ptHistory.shift();
+
+            updateDataUI();
+        }
+
+        function drawArrow(ctx, fromX, fromY, vecY, color, label) {
+            if (Math.abs(vecY) < 1) return;
+
+            const toY = fromY - vecY; // Lower Y in canvas = higher position
+            const dir = Math.sign(-vecY);
+            const headLen = Math.min(8, Math.abs(vecY) * 0.3);
+
+            ctx.save();
+            ctx.strokeStyle = color;
+            ctx.fillStyle = color;
+            ctx.lineWidth = 2.5;
+
+            ctx.beginPath();
+            ctx.moveTo(fromX, fromY);
+            ctx.lineTo(fromX, toY);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(fromX, toY);
+            ctx.lineTo(fromX - headLen * 0.6, toY - dir * headLen);
+            ctx.lineTo(fromX + headLen * 0.6, toY - dir * headLen);
+            ctx.closePath();
+            ctx.fill();
+
+            if (label && chkValues.checked) {
+                ctx.font = 'bold 10px Inter, sans-serif';
+                ctx.textAlign = 'left';
+                ctx.fillText(label, fromX + 8, toY + (dir < 0 ? -4 : 12));
+            }
+            ctx.restore();
+        }
+
+        function drawSimulation() {
+            const w = canvas.width;
+            const h = canvas.height;
+
+            ctx.clearRect(0, 0, w, h);
+
+            // Sky / Space Gradient
+            if (state.env === 'earth') {
+                const skyGrad = ctx.createLinearGradient(0, 0, 0, h);
+                skyGrad.addColorStop(0, '#0284c7');
+                skyGrad.addColorStop(0.7, '#0f172a');
+                ctx.fillStyle = skyGrad;
+                ctx.fillRect(0, 0, w, h);
+            } else { // Moon
+                ctx.fillStyle = '#090d16';
+                ctx.fillRect(0, 0, w, h);
+
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+                for (let i = 0; i < 30; i++) {
+                    const sx = (i * 137) % w;
+                    const sy = (i * 83) % (h * 0.6);
+                    ctx.fillRect(sx, sy, 2, 2);
+                }
+            }
+
+            const floorY = h * 0.82;
+            const maxWorldH = 10.0; // meters
+
+            const yToPx = (yMeters) => floorY - (yMeters / maxWorldH) * (floorY - 40);
+
+            // Height Grid & Ruler Markers
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+            ctx.lineWidth = 1;
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.font = '10px Inter, sans-serif';
+
+            for (let m = 0; m <= 10; m += 2) {
+                const py = yToPx(m);
+                ctx.beginPath();
+                ctx.moveTo(40, py);
+                ctx.lineTo(w - 20, py);
+                ctx.stroke();
+                ctx.fillText(`${m}m`, 15, py + 3);
+            }
+
+            // Drop Height Reference Line (Dashed)
+            const dropPy = yToPx(state.h0);
+            ctx.strokeStyle = 'rgba(52, 211, 153, 0.5)';
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.moveTo(40, dropPy);
+            ctx.lineTo(w - 20, dropPy);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.fillStyle = '#34d399';
+            ctx.fillText(`초기 높이 h0 = ${state.h0}m`, w - 120, dropPy - 6);
+
+            // Ground Surface Line
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(0, floorY, w, h - floorY);
+            ctx.strokeStyle = '#10b981';
+            ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.moveTo(0, floorY); ctx.lineTo(w, floorY); ctx.stroke();
+
+            // Ball Object Properties
+            const ballRadius = (16 + Math.cbrt(state.m) * 7) * (w / 800);
+            const ballX = w * 0.45;
+            const ballY = yToPx(state.y) - ballRadius;
+
+            // Shadow on ground
+            const shadowOpacity = Math.max(0, 0.6 - (state.y / 10));
+            const shadowScale = Math.max(0.3, 1 - (state.y / 10));
+            ctx.save();
+            ctx.beginPath();
+            ctx.ellipse(ballX, floorY, ballRadius * shadowScale * 1.2, ballRadius * 0.3 * shadowScale, 0, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(0,0,0, ${shadowOpacity})`;
+            ctx.fill();
+            ctx.restore();
+
+            // Falling Ball Object
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(ballX, ballY, ballRadius, 0, Math.PI * 2);
+            ctx.fillStyle = '#10b981';
+            ctx.shadowColor = 'rgba(16, 185, 129, 0.6)';
+            ctx.shadowBlur = 18;
+            ctx.fill();
+            ctx.strokeStyle = '#a7f3d0';
+            ctx.lineWidth = 2.5;
+            ctx.stroke();
+            ctx.restore();
+
+            // Ball Mass Label
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 12px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(`${state.m}kg`, ballX, ballY + 4);
+
+            // Vector Arrows
+            if (chkVectors.checked) {
+                const vScale = 6;
+                drawArrow(ctx, ballX - 25, ballY, state.v * vScale, '#34d399', `v:${state.v.toFixed(1)}m/s`);
+
+                const pScale = 2.5;
+                drawArrow(ctx, ballX + 25, ballY, (state.m * state.v) * pScale, '#c084fc', `p:${(state.m * state.v).toFixed(1)}`);
+            }
+
+            // Impact Spark Effect during Floor Collision
+            if (state.isColliding) {
+                ctx.save();
+                ctx.strokeStyle = '#fbbf24';
+                ctx.lineWidth = 3;
+                for (let i = 0; i < 8; i++) {
+                    const angle = (Math.PI / 8) * i + Math.PI;
+                    const len = 20 + Math.random() * 15;
+                    ctx.beginPath();
+                    ctx.moveTo(ballX, floorY);
+                    ctx.lineTo(ballX + Math.cos(angle) * len, floorY + Math.sin(angle) * len * 0.5);
+                    ctx.stroke();
+                }
+
+                const fScale = Math.min(100, state.maxForceVal * 0.2);
+                drawArrow(ctx, ballX, floorY, fScale, '#f59e0b', `F_ground:${state.maxForceVal.toFixed(0)}N`);
+
+                ctx.restore();
+            }
+        }
+
+        function drawGraphs() {
+            // 1. Force vs Time (F-t) Graph
+            const w1 = ftCanvas.width;
+            const h1 = ftCanvas.height;
+            ftCtx.clearRect(0, 0, w1, h1);
+
+            ftCtx.strokeStyle = '#334155';
+            ftCtx.lineWidth = 1;
+            ftCtx.beginPath();
+            ftCtx.moveTo(40, 10); ftCtx.lineTo(40, h1 - 20); ftCtx.lineTo(w1 - 10, h1 - 20);
+            ftCtx.stroke();
+
+            ftCtx.fillStyle = '#94a3b8';
+            ftCtx.font = '10px Inter, sans-serif';
+            ftCtx.fillText('힘 F(N)', 2, 15);
+            ftCtx.fillText('t(s)', w1 - 25, h1 - 5);
+
+            if (state.ftHistory.length > 1) {
+                const maxF = Math.max(50, state.maxForceVal * 1.2);
+                const maxT = Math.max(2, state.time);
+
+                ftCtx.beginPath();
+                ftCtx.moveTo(40, h1 - 20);
+
+                state.ftHistory.forEach(pt => {
+                    const x = 40 + (pt.t / maxT) * (w1 - 50);
+                    const y = (h1 - 20) - (pt.f / maxF) * (h1 - 35);
+                    ftCtx.lineTo(x, y);
+                });
+
+                ftCtx.lineTo(40 + (state.time / maxT) * (w1 - 50), h1 - 20);
+                ftCtx.closePath();
+
+                const gradient = ftCtx.createLinearGradient(0, 0, 0, h1);
+                gradient.addColorStop(0, 'rgba(245, 158, 11, 0.5)');
+                gradient.addColorStop(1, 'rgba(245, 158, 11, 0.05)');
+                ftCtx.fillStyle = gradient;
+                ftCtx.fill();
+
+                ftCtx.beginPath();
+                state.ftHistory.forEach((pt, idx) => {
+                    const x = 40 + (pt.t / maxT) * (w1 - 50);
+                    const y = (h1 - 20) - (pt.f / maxF) * (h1 - 35);
+                    if (idx === 0) ftCtx.moveTo(x, y);
+                    else ftCtx.lineTo(x, y);
+                });
+                ftCtx.strokeStyle = '#f59e0b';
+                ftCtx.lineWidth = 2.5;
+                ftCtx.stroke();
+
+                if (state.collisionOccurred) {
+                    ftCtx.fillStyle = '#fbbf24';
+                    ftCtx.font = 'bold 11px Inter, sans-serif';
+                    ftCtx.fillText(`I = ∫F dt = ${state.impulseVal.toFixed(1)} N·s`, w1 / 2 - 30, h1 / 2);
+                }
+            }
+
+            // 2. Momentum vs Time (p-t) Graph
+            const w2 = ptCanvas.width;
+            const h2 = ptCanvas.height;
+            ptCtx.clearRect(0, 0, w2, h2);
+
+            ptCtx.strokeStyle = '#334155';
+            ptCtx.lineWidth = 1;
+            ptCtx.beginPath();
+            ptCtx.moveTo(40, 10); ptCtx.lineTo(40, h2 - 20); ptCtx.lineTo(w2 - 10, h2 - 20);
+            ptCtx.stroke();
+
+            ptCtx.fillStyle = '#94a3b8';
+            ptCtx.font = '10px Inter, sans-serif';
+            ptCtx.fillText('p(kg·m/s)', 2, 15);
+            ptCtx.fillText('t(s)', w2 - 25, h2 - 5);
+
+            if (state.ptHistory.length > 1) {
+                const maxT = Math.max(2, state.time);
+                const maxP = 60; // range [-60, +60]
+
+                ptCtx.beginPath();
+                state.ptHistory.forEach((pt, idx) => {
+                    const x = 40 + (pt.t / maxT) * (w2 - 50);
+                    const y = (h2 / 2) - (pt.p / maxP) * (h2 / 2 - 15);
+                    if (idx === 0) ptCtx.moveTo(x, y);
+                    else ptCtx.lineTo(x, y);
+                });
+                ptCtx.strokeStyle = '#c084fc';
+                ptCtx.lineWidth = 2.5;
+                ptCtx.stroke();
+
+                ptCtx.strokeStyle = '#475569';
+                ptCtx.setLineDash([2, 2]);
+                ptCtx.beginPath();
+                ptCtx.moveTo(40, h2 / 2);
+                ptCtx.lineTo(w2 - 10, h2 / 2);
+                ptCtx.stroke();
+                ptCtx.setLineDash([]);
+            }
+        }
+
+        function updateDataUI() {
+            timeDisplay.textContent = state.time.toFixed(2);
+
+            // Energy UI Update
+            valEtotal.textContent = `${state.eTotal.toFixed(1)}`;
+            valKe.textContent = `${state.ke.toFixed(1)}`;
+            valPe.textContent = `${state.pe.toFixed(1)}`;
+
+            const kePct = Math.min(100, Math.max(0, (state.ke / state.eTotal) * 100));
+            const pePct = Math.min(100, Math.max(0, (state.pe / state.eTotal) * 100));
+
+            barKe.style.width = `${kePct}%`;
+            barPe.style.width = `${pePct}%`;
+
+            dataVin.textContent = `${state.vIn.toFixed(2)} m/s`;
+            dataPin.textContent = `${state.pIn.toFixed(2)} kg·m/s`;
+            dataImpulse.textContent = `${state.impulseVal.toFixed(2)} N·s`;
+            dataFmax.textContent = `${state.maxForceVal.toFixed(1)} N`;
+
+            dataVout.textContent = `${state.vOut.toFixed(2)} m/s`;
+            calcFormula.innerHTML = `${state.vIn.toFixed(2)} + (${state.impulseVal.toFixed(1)} / ${state.m.toFixed(1)})`;
+        }
+
+        // Event Listeners for Controls
+        [inputM, inputH, inputDt].forEach(elem => {
+            elem.addEventListener('input', () => {
+                valM.textContent = parseFloat(inputM.value).toFixed(1);
+                valH.textContent = parseFloat(inputH.value).toFixed(1);
+                labelContactTime.textContent = `${parseFloat(inputDt.value).toFixed(2)} s`;
+                resetSimulation();
+            });
+        });
+
+        inputSpeed.addEventListener('input', () => {
+            state.speedScale = parseFloat(inputSpeed.value);
+            valSpeed.textContent = `${state.speedScale.toFixed(1)}x`;
+        });
+
+        // Play / Pause Toggle
+        btnPlayPause.addEventListener('click', () => {
+            state.running = !state.running;
+            if (state.running) {
+                iconPlayPause.className = 'fa-solid fa-pause';
+                textPlayPause.textContent = '일시정지';
+                statusPing.classList.remove('hidden');
+                statusDot.className = 'relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500';
+                simStatusText.textContent = '낙하 진행 중';
+                simStatusText.className = 'text-xs font-semibold text-emerald-400';
+            } else {
+                iconPlayPause.className = 'fa-solid fa-play';
+                textPlayPause.textContent = '재생';
+                statusPing.classList.add('hidden');
+                statusDot.className = 'relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500';
+                simStatusText.textContent = '일시정지됨';
+                simStatusText.className = 'text-xs font-semibold text-amber-400';
+            }
+        });
+
+        btnStep.addEventListener('click', () => {
+            state.running = false;
+            iconPlayPause.className = 'fa-solid fa-play';
+            textPlayPause.textContent = '재생';
+            updatePhysics(0.016);
+            drawSimulation();
+            drawGraphs();
+        });
+
+        btnReset.addEventListener('click', resetSimulation);
+
+        // Modal triggers
+        btnTheory.addEventListener('click', () => modal.classList.remove('hidden'));
+        btnCloseModal.addEventListener('click', () => modal.classList.add('hidden'));
+        btnCloseModalBottom.addEventListener('click', () => modal.classList.add('hidden'));
+
+        // Animation Frame Loop
+        let lastTimestamp = 0;
+        function animateLoop(timestamp) {
+            if (!lastTimestamp) lastTimestamp = timestamp;
+            const frameTime = (timestamp - lastTimestamp) / 1000;
+            lastTimestamp = timestamp;
+
+            const dt = Math.min(frameTime, 0.033);
+
+            if (state.running) {
+                updatePhysics(dt);
+            }
+
+            drawSimulation();
+            drawGraphs();
+
+            requestAnimationFrame(animateLoop);
+        }
+
+        window.onload = function() {
+            resizeCanvases();
+            resetSimulation();
+            requestAnimationFrame(animateLoop);
+        };
+    </script>
+</body>
+</html>
